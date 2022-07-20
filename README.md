@@ -19,14 +19,13 @@ https://drive.google.com/drive/folders/12mKK-Ql4y6PDw8vKbPe6OSKle_N82sh0?usp=sha
 
 ## Dockerfile
 To run the algorithm, we recommend to build the docker image based on the Dockerfile provided.
-
-## Test and Export
-export.sh:
+#### export.sh:
 The command lines used for build docker image.
+Before building the docker image, you should put the downloaed weight to the folder libs/WEIGTH.
 
-test.sh:
+#### test.sh:
 The command lines used for testing the algorithm.
-Before testing the algorithm, you should first change the path in the test.sh.
-(change the ..path/input to a dir which contains the image and the tissue background)
+Before testing the algorithm, you should change the path in the test.sh
+(change the ..path/input to a dir which contains the image and the tissue background).
 The segmentation and detection results can be found in the docker volumn refered tiger-output.
 
