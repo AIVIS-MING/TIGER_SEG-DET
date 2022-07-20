@@ -28,4 +28,3 @@ The command lines used for testing the algorithm.
 Before testing the algorithm, you should change the path in the test.sh
 (change the ..path/input to a dir which contains the image and the tissue background).
 The segmentation and detection results can be found in the docker volumn refered tiger-output.
-
