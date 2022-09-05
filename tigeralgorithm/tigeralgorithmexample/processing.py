@@ -204,15 +204,18 @@ def slide_inference(img, model_1, model_2, model_swin, test_pipeline):
                 data['img_metas'] = [i.data[0] for i in data['img_metas']] 
             
             with torch.no_grad():
+                # torch.cuda.empty_cache()
                 crop_seg_logit_1, seg_logit_1 = model_1(return_loss=False, rescale=False, **data)
+                # torch.cuda.empty_cache()
                 crop_seg_logit_2, seg_logit_2 = model_2(return_loss=False, rescale=False, **data)
+                # torch.cuda.empty_cache()
                 # crop_seg_logit_swin, seg_logit_swin = model_swin(return_loss=False, rescale=False, **data)
             preds_1 += F.pad(crop_seg_logit_1,(int(x1), int(preds_1.shape[3] - x2), int(y1), int(preds_1.shape[2] - y2)))
             preds_2 += F.pad(crop_seg_logit_2,(int(x1), int(preds_2.shape[3] - x2), int(y1),int(preds_2.shape[2] - y2)))
             # preds_swin += F.pad(crop_seg_logit_swin,(int(x1), int(preds_swin.shape[3] - x2), int(y1),int(preds_swin.shape[2] - y2)))
 
             count_mat[:, :, y1:y2, x1:x2] += 1
-
+    
     assert (count_mat == 0).sum() == 0
     preds_1 = preds_1 / count_mat
     preds_2 = preds_2 / count_mat
@@ -274,7 +277,8 @@ def process_image_tile_to_segmentation(image_tile_seg: np.ndarray, tissue_mask_t
                                        model_res101_folder1, 
                                        model_res101_folder2, 
                                        model_swin, 
-                                       test_pipeline) -> np.ndarray:
+                                       test_pipeline,
+                                       Padding) -> np.ndarray:
     """
     class_3: 1 2 3 --> 0 1 2
     class_4: 1 2 3 4 --> 0 1 2 3
@@ -287,7 +291,11 @@ def process_image_tile_to_segmentation(image_tile_seg: np.ndarray, tissue_mask_t
                                        test_pipeline=test_pipeline)
 
     prediction_fusion = prediction_tumor + 1
-    return prediction_fusion * tissue_mask_tile
+    tissue_mask_tile[tissue_mask_tile!=0] = 1
+    prediction_final_rm_padding = prediction_fusion[Padding: (Padding+tissue_mask_tile.shape[0]), Padding:(Padding+tissue_mask_tile.shape[1])]
+     
+    torch.cuda.empty_cache()  
+    return prediction_final_rm_padding * tissue_mask_tile
 
 @timing
 def process_image_tile_to_detections(
@@ -352,9 +360,9 @@ def process_image_tile_to_detections(
         tissue_mask = cv2.erode(tissue_mask, kernel, iterations = 10)
 
     torch.cuda.empty_cache()
-    pred = detect_yolo(img_batch, model1, 256, 36, select_device(device))
+    pred = detect_yolo(img_batch, model1, 256, _bs_pred1_det, select_device(device))
     torch.cuda.empty_cache()
-    pred2 = detect_mm(img_batch, model=model2, size_patch = size_patch, bs = 6)
+    pred2 = detect_mm(img_batch, model=model2, size_patch = size_patch, bs = _bs_pred2_det)
     
     pred_list = []
     pred_list2 = []
@@ -436,11 +444,11 @@ def process_image_tile_to_detections(
             coor_tiles.append([begin_x, begin_y, end_x, end_y])
             
     torch.cuda.empty_cache()
-    pred5 = detect_yolo(img_batch, model5, 1280, 6, select_device(device))
+    pred5 = detect_yolo(img_batch, model5, 1280, _bs_pred5_det, select_device(device))
     torch.cuda.empty_cache()
-    pred6 = detect_mm(img_batch, model=model6, size_patch = size_patch, bs = 6)
+    pred6 = detect_mm(img_batch, model=model6, size_patch = size_patch, bs = _bs_pred6_det)
     torch.cuda.empty_cache()
-    pred7 = detect_mm(img_batch, model=model7, size_patch = size_patch, bs = 6)
+    pred7 = detect_mm(img_batch, model=model7, size_patch = size_patch, bs = _bs_pred7_det)
     
     pred_list5 = []
     pred_list6 = []
@@ -578,44 +586,18 @@ checkpoint_file_res101_folder1 = osp.join(WEIGHT_DIR, 'weight_res101_folder1.pth
 checkpoint_file_res101_folder2 = osp.join(WEIGHT_DIR, 'weight_res101_folder2.pth')
 # checkpoint_file_swin = osp.join(WEIGHT_DIR, 'weight_swin.pth')
 
-# G_model_class_3 = init_segmentor(config_file_class_3, checkpoint_file_class_3, device=device)
-G_model_res101_folder1 = init_segmentor(config_file_res101, checkpoint_file_res101_folder1, device=device)
-G_model_res101_folder2 = init_segmentor(config_file_res101, checkpoint_file_res101_folder2, device=device)
-# G_model_swin = init_segmentor(config_file_swin, checkpoint_file_swin, device=device)
-G_model_swin = None
-
-cfg = mmcv.Config.fromfile(config_file_res101)
-test_pipeline = [LoadImage()] + cfg.data.test.pipeline[1:]
-G_test_pipeline = Compose(test_pipeline)
-
-print("*******model init-------[done!]*******")    
-
-
 ## Detection init
 DETECTION_WEIGHT_DIR = "/home/user/WEIGHT/detection"
 
-#### 256
-device_yolov5 = select_device(device)
-weights_yolov5 = osp.join(DETECTION_WEIGHT_DIR, 'best_tmp.pt')
-model_yolov5 = DetectMultiBackend(weights_yolov5, device=device_yolov5)
 
-detection_config_file = osp.join(DETECTION_WEIGHT_DIR, 'cascade_1.py')
-detection_checkpoint_file = osp.join(DETECTION_WEIGHT_DIR, 'cascade_1.pth')
-model_mm = init_detector(detection_config_file, detection_checkpoint_file, device=device)
-
-#### 384
-weights_yolov5_2 = osp.join(DETECTION_WEIGHT_DIR, 'best_384.pt')
-model_yolov5_2 = DetectMultiBackend(weights_yolov5_2, device=device_yolov5)
-
-detection_config_file4 = osp.join(DETECTION_WEIGHT_DIR, 'cascade_2_384.py')
-detection_checkpoint_file4 = osp.join(DETECTION_WEIGHT_DIR, 'cascade_2_384.pth')
-model_mm4 = init_detector(detection_config_file4, detection_checkpoint_file4, device=device)
-
-detection_config_file5 = osp.join(DETECTION_WEIGHT_DIR, 'atss_2_384.py')
-detection_checkpoint_file5 = osp.join(DETECTION_WEIGHT_DIR, 'atss_2_384.pth')
-model_mm5 = init_detector(detection_config_file5, detection_checkpoint_file5, device=device)
 
 print(f"Pytorch GPU available: {torch.cuda.is_available()}")
+
+_bs_pred1_det = 72
+_bs_pred2_det = 24
+_bs_pred5_det = 24
+_bs_pred6_det = 24
+_bs_pred7_det = 24
 
 def process():
     """Proceses a test slide"""
@@ -640,7 +622,89 @@ def process():
     # get image info
     dimensions = image.getDimensions()
     spacing = image.getSpacing()
+    # create writers
+    print(f"Setting up writers")
+    segmentation_writer = SegmentationWriter(
+        TMP_SEGMENTATION_OUTPUT_PATH,
+        tile_size=tile_size,
+        dimensions=dimensions,
+        spacing=spacing,
+    )
+    print("Processing image...")
+    # G_model_class_3 = init_segmentor(config_file_class_3, checkpoint_file_class_3, device=device)
+    G_model_res101_folder1 = init_segmentor(config_file_res101, checkpoint_file_res101_folder1, device=device)
+    G_model_res101_folder2 = init_segmentor(config_file_res101, checkpoint_file_res101_folder2, device=device)
+    # G_model_swin = init_segmentor(config_file_swin, checkpoint_file_swin, device=device)
+    G_model_swin = None
 
+    cfg = mmcv.Config.fromfile(config_file_res101)
+    test_pipeline = [LoadImage()] + cfg.data.test.pipeline[1:]
+    G_test_pipeline = Compose(test_pipeline)
+    # loop over image and get tiles
+    for y in range(0, dimensions[1], tile_size):
+        for x in range(0, dimensions[0], tile_size):
+            tissue_mask_tile = tissue_mask.getUCharPatch(
+                startX=x, startY=y, width=tile_size, height=tile_size, level=level
+            ).squeeze()
+            
+            if not np.any(tissue_mask_tile):
+                #print("{}, {}".format(x,y) )
+                continue
+            
+            Padding = 512
+            x_seg = x - Padding
+            y_seg = y - Padding
+            tile_size_seg = tile_size + 2*Padding
+            
+            image_tile_seg = image.getUCharPatch(
+                startX=x_seg, startY=y_seg, width=tile_size_seg, height=tile_size_seg, level=level
+            )
+            # segmentation
+            print("=========segmentation start=========")
+            segmentation_mask_class3 = process_image_tile_to_segmentation(
+                image_tile_seg=image_tile_seg, tissue_mask_tile=tissue_mask_tile, 
+                model_res101_folder1=G_model_res101_folder1, 
+                model_res101_folder2=G_model_res101_folder2, 
+                model_swin = G_model_swin, 
+                test_pipeline=G_test_pipeline,
+                Padding=Padding)
+            segmentation_writer.write_segmentation(tile=segmentation_mask_class3, x=x, y=y)
+            
+    print("Saving Segmentation...")
+    # save segmentation and detection
+    segmentation_writer.save()
+    del G_model_res101_folder1
+    del G_model_res101_folder2
+    torch.cuda.empty_cache()
+    torch.cuda.init()
+    
+    #### 256
+    device_yolov5 = select_device(device)
+    weights_yolov5 = osp.join(DETECTION_WEIGHT_DIR, 'best_tmp.pt')
+    model_yolov5 = DetectMultiBackend(weights_yolov5, device=device_yolov5)
+    torch.cuda.empty_cache()
+
+    detection_config_file = osp.join(DETECTION_WEIGHT_DIR, 'cascade_1.py')
+    detection_checkpoint_file = osp.join(DETECTION_WEIGHT_DIR, 'cascade_1.pth')
+    model_mm = init_detector(detection_config_file, detection_checkpoint_file, device=device)
+    torch.cuda.empty_cache() 
+    #### 384
+    weights_yolov5_2 = osp.join(DETECTION_WEIGHT_DIR, 'best_384.pt')
+    model_yolov5_2 = DetectMultiBackend(weights_yolov5_2, device=device_yolov5)
+    torch.cuda.empty_cache()
+
+    detection_config_file4 = osp.join(DETECTION_WEIGHT_DIR, 'cascade_2_384.py')
+    detection_checkpoint_file4 = osp.join(DETECTION_WEIGHT_DIR, 'cascade_2_384.pth')
+    model_mm4 = init_detector(detection_config_file4, detection_checkpoint_file4, device=device)
+    torch.cuda.empty_cache() 
+
+    detection_config_file5 = osp.join(DETECTION_WEIGHT_DIR, 'atss_2_384.py')
+    detection_checkpoint_file5 = osp.join(DETECTION_WEIGHT_DIR, 'atss_2_384.pth')
+    model_mm5 = init_detector(detection_config_file5, detection_checkpoint_file5, device=device)
+    torch.cuda.empty_cache() 
+    
+    detection_writer = DetectionWriter(TMP_DETECTION_OUTPUT_PATH)
+    tils_score_writer = TilsScoreWriter(TMP_TILS_SCORE_PATH)
     # Small Size Scanning image info
     downSample = 64
     level_smallMask = tissue_mask.getBestLevelForDownSample(downSample) 
@@ -675,19 +739,7 @@ def process():
                     
                 smallMask[begin_y:begin_y + height_box + 1, begin_x:begin_x + width_box + 1] = 0
                 mask_coor.append((begin_x, begin_y, begin_x + width_box + 1, begin_y + height_box + 1))
-
-    # create writers
-    print(f"Setting up writers")
-    segmentation_writer = SegmentationWriter(
-        TMP_SEGMENTATION_OUTPUT_PATH,
-        tile_size=tile_size,
-        dimensions=dimensions,
-        spacing=spacing,
-    )
-    detection_writer = DetectionWriter(TMP_DETECTION_OUTPUT_PATH)
-    tils_score_writer = TilsScoreWriter(TMP_TILS_SCORE_PATH)
-
-    print("Processing image...")
+                
     for i in range(0, len(mask_coor)):
         x = mask_coor[i][0] * downSample - 256
         y = mask_coor[i][1] * downSample - 256
@@ -713,23 +765,6 @@ def process():
             startX=x, startY=y, width=width, height=height, level=level
         )
 
-        print("========= segmentation processing =========")
-        segmentation_mask_class3 = process_image_tile_to_segmentation(
-            image_tile_seg=image_tile, tissue_mask_tile=tissue_mask_tile, 
-            model_res101_folder1=G_model_res101_folder1, 
-            model_res101_folder2=G_model_res101_folder2, 
-            model_swin = G_model_swin, 
-            test_pipeline=G_test_pipeline)
-        n_Hiter = math.ceil(height / tile_size)
-        n_Witer = math.ceil(width / tile_size)
-        for iH in range(0, n_Hiter):
-            for iW in range(0, n_Witer):
-                segmentation_mask_forSave = np.zeros((tile_size, tile_size))
-                size_H = min((segmentation_mask_class3.shape[0]-iH*tile_size), tile_size)
-                size_W = min((segmentation_mask_class3.shape[1]-iW*tile_size), tile_size)
-                segmentation_mask_forSave[0:size_H, 0:size_W] = segmentation_mask_class3[iH*tile_size:iH*tile_size + size_H, iW*tile_size:iW*tile_size + size_W]
-                segmentation_writer.write_segmentation(tile=segmentation_mask_forSave, x=x, y=y)
-
         print("========= detection processing =========")
         # ts = time()
         detections = process_image_tile_to_detections(
@@ -751,7 +786,6 @@ def process():
 
     print("Saving...")
     # save segmentation and detection
-    segmentation_writer.save()
     detection_writer.save()
 
     print('Number of detections', len(detection_writer.detections))
