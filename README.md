@@ -2,7 +2,7 @@
 
 Segmentation and Detection algorithm developped by TEAM:AIVIS_MING
 
-<img src="https://github.com/AIVIS-MING/TIGER_SEG-DET/blob/main/AIVIS/aivis_wallpaper.png" width="500" height="500">
+<img src="https://github.com/AIVIS-MING/TIGER_SEG-DET/blob/main/AIVIS/aivis_wallpaper.png" width="500" height="288">
 
 
 ## Introduction
