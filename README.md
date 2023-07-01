@@ -15,7 +15,7 @@ The libraries(mmsegmentation & mmdetection & yolov5) we used for segmentation an
 
 ===========Weight========:
 To test the algorithm, you can used the pre-trained weight.
-https://drive.google.com/drive/folders/12mKK-Ql4y6PDw8vKbPe6OSKle_N82sh0?usp=sharing
+https://drive.google.com/drive/folders/1YO_qhg5Qpznh0SNFKvUXd__skO5EE8DG?usp=sharing
 
 ## Dockerfile
 To run the algorithm, we recommend to build the docker image based on the Dockerfile provided.
