@@ -1,8 +1,8 @@
 # Pathology Tiger Algorithm (AIVIS)
 
-Segmentation and Detection algorithm developped by TEAM:AIVIS
+Segmentation and Detection algorithm developped by TEAM:AIVIS_MING
 
-<img src="https://github.com/DIAGNijmegen/pathology-tiger-algorithm-example/blob/main/Tiger%20-%20algorithm%20example.png" width="500" height="500">
+<img src="https://github.com/AIVIS-MING/TIGER_SEG-DET/blob/main/AIVIS/aivis_wallpaper.png" width="500" height="500">
 
 
 ## Introduction
